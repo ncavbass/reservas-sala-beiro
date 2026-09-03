@@ -203,272 +203,300 @@
   <div id="dayPanel"></div>
 </div>
 
-<script>
-(function(){
-  const STORAGE_KEY = 'reservas_v1';
-  const OWNER_KEY = 'sala_ensayo_owner_id';
-  let ownerId = localStorage.getItem(OWNER_KEY);
-  if(!ownerId){
-    ownerId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'owner-' + Date.now() + '-' + Math.random().toString(36).slice(2);
-    localStorage.setItem(OWNER_KEY, ownerId);
-  }
-  const state = { reservas: [], viewYear: null, viewMonth: null, selectedDate: null };
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getDatabase, ref, onValue, set, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  state.viewYear = today.getFullYear();
-  state.viewMonth = today.getMonth();
-  state.selectedDate = fmtDate(today);
+const firebaseConfig = {
+  apiKey: "AIzaSyC22WibCcJ6xErPI96cE__IIeDjAmji51Q",
+  authDomain: "reservas-ensayo.firebaseapp.com",
+  databaseURL: "https://reservas-ensayo-default-rtdb.firebaseio.com/",
+  projectId: "reservas-ensayo",
+  storageBucket: "reservas-ensayo.firebasestorage.app",
+  messagingSenderId: "1043763747030",
+  appId: "1:1043763747030:web:da45e8a34cf230c683d177"
+};
 
-  const monthLabelEl = document.getElementById('monthLabel');
-  const weekdaysEl = document.getElementById('weekdays');
-  const gridEl = document.getElementById('calendarGrid');
-  const panelEl = document.getElementById('dayPanel');
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
 
-  const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-  const DIAS = ['lun','mar','mié','jue','vie','sáb','dom'];
-  DIAS.forEach(function(d){
-    const s = document.createElement('span');
-    s.textContent = d;
-    weekdaysEl.appendChild(s);
-  });
+const state = { reservas: [], viewYear: null, viewMonth: null, selectedDate: null, uid: null, ready: false };
 
-  function fmtDate(d){
-    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-  }
-  function parseDate(s){
-    const parts = s.split('-').map(Number);
-    return new Date(parts[0], parts[1]-1, parts[2]);
-  }
-  function displayDate(s){
-    return parseDate(s).toLocaleDateString('es-AR',{ weekday:'long', day:'numeric', month:'long' });
-  }
+const today = new Date();
+today.setHours(0,0,0,0);
+state.viewYear = today.getFullYear();
+state.viewMonth = today.getMonth();
+state.selectedDate = fmtDate(today);
 
-  async function loadReservas(){
-    try{
-      const res = await window.storage.get(STORAGE_KEY, true);
-      state.reservas = (res && res.value) ? JSON.parse(res.value) : [];
-    }catch(e){
-      state.reservas = [];
-    }
-  }
-  async function saveReservas(){
-    try{
-      await window.storage.set(STORAGE_KEY, JSON.stringify(state.reservas), true);
-    }catch(e){}
-  }
+const monthLabelEl = document.getElementById('monthLabel');
+const weekdaysEl = document.getElementById('weekdays');
+const gridEl = document.getElementById('calendarGrid');
+const panelEl = document.getElementById('dayPanel');
 
-  function reservasDelDia(dateStr){
-    return state.reservas
-      .filter(function(r){ return r.date === dateStr; })
-      .sort(function(a,b){ return (a.startTime || a.time || '').localeCompare(b.startTime || b.time || ''); });
-  }
+const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const DIAS = ['lun','mar','mié','jue','vie','sáb','dom'];
+DIAS.forEach(function(d){
+  const s = document.createElement('span');
+  s.textContent = d;
+  weekdaysEl.appendChild(s);
+});
 
-  function renderCalendar(){
-    monthLabelEl.textContent = MESES[state.viewMonth] + ' ' + state.viewYear;
-    gridEl.innerHTML = '';
+function fmtDate(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function parseDate(s){
+  const parts = s.split('-').map(Number);
+  return new Date(parts[0], parts[1]-1, parts[2]);
+}
+function displayDate(s){
+  return parseDate(s).toLocaleDateString('es-AR',{ weekday:'long', day:'numeric', month:'long' });
+}
+function reservasDelDia(dateStr){
+  return state.reservas
+    .filter(function(r){ return r.date === dateStr; })
+    .sort(function(a,b){ return (a.startTime || '').localeCompare(b.startTime || ''); });
+}
 
-    const first = new Date(state.viewYear, state.viewMonth, 1);
-    let startOffset = first.getDay() - 1;
-    if(startOffset < 0) startOffset = 6;
-    const daysInMonth = new Date(state.viewYear, state.viewMonth+1, 0).getDate();
+function renderCalendar(){
+  monthLabelEl.textContent = MESES[state.viewMonth] + ' ' + state.viewYear;
+  gridEl.innerHTML = '';
 
-    for(let i=0;i<startOffset;i++){
-      gridEl.appendChild(document.createElement('div'));
-    }
+  const first = new Date(state.viewYear, state.viewMonth, 1);
+  let startOffset = first.getDay() - 1;
+  if(startOffset < 0) startOffset = 6;
+  const daysInMonth = new Date(state.viewYear, state.viewMonth+1, 0).getDate();
 
-    for(let day=1; day<=daysInMonth; day++){
-      const d = new Date(state.viewYear, state.viewMonth, day);
-      const dateStr = fmtDate(d);
-      const count = reservasDelDia(dateStr).length;
-      const isToday = fmtDate(today) === dateStr;
-      const isSelected = state.selectedDate === dateStr;
-      const isPast = d < today;
+  for(let i=0;i<startOffset;i++) gridEl.appendChild(document.createElement('div'));
 
-      const cell = document.createElement('button');
-      cell.type = 'button';
-      cell.className = 'day-cell' + (isSelected ? ' selected' : '') + (isPast ? ' past' : '');
-      cell.setAttribute('aria-label', displayDate(dateStr) + (count ? ', ' + count + ' reserva(s)' : ', sin reservas'));
+  for(let day=1; day<=daysInMonth; day++){
+    const d = new Date(state.viewYear, state.viewMonth, day);
+    const dateStr = fmtDate(d);
+    const count = reservasDelDia(dateStr).length;
+    const isToday = fmtDate(today) === dateStr;
+    const isSelected = state.selectedDate === dateStr;
+    const isPast = d < today;
 
-      const num = document.createElement('span');
-      num.className = 'day-num' + (isToday ? ' today' : '');
-      num.textContent = day;
-      cell.appendChild(num);
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'day-cell' + (isSelected ? ' selected' : '') + (isPast ? ' past' : '');
+    cell.setAttribute('aria-label', displayDate(dateStr) + (count ? ', ' + count + ' reserva(s)' : ', sin reservas'));
 
-      const dot = document.createElement('span');
-      dot.className = 'day-dot';
-      dot.textContent = count > 0 ? (count > 3 ? '3+' : '\u2022'.repeat(count)) : '\u00A0';
-      cell.appendChild(dot);
+    const num = document.createElement('span');
+    num.className = 'day-num' + (isToday ? ' today' : '');
+    num.textContent = day;
+    cell.appendChild(num);
 
-      cell.addEventListener('click', function(){
-        state.selectedDate = dateStr;
-        renderCalendar();
-        renderPanel();
-      });
-      gridEl.appendChild(cell);
-    }
-  }
+    const dot = document.createElement('span');
+    dot.className = 'day-dot';
+    dot.textContent = count > 0 ? (count > 3 ? '3+' : '\u2022'.repeat(count)) : '\u00A0';
+    cell.appendChild(dot);
 
-  function renderPanel(){
-    const dateStr = state.selectedDate;
-    const list = reservasDelDia(dateStr);
-    const isPast = parseDate(dateStr) < today;
-
-    panelEl.innerHTML = '';
-
-    const heading = document.createElement('h2');
-    heading.textContent = displayDate(dateStr);
-    panelEl.appendChild(heading);
-
-    if(list.length === 0){
-      const empty = document.createElement('p');
-      empty.className = 'empty-note';
-      empty.textContent = 'Todavía nadie reservó este día.';
-      panelEl.appendChild(empty);
-    } else {
-      list.forEach(function(r){
-        const row = document.createElement('div');
-        row.className = 'res-row';
-
-        const left = document.createElement('div');
-        left.className = 'res-left';
-        const time = document.createElement('span');
-        time.className = 'res-time';
-        time.textContent = (r.startTime || r.time) + (r.endTime ? '–' + r.endTime : '');
-        const name = document.createElement('span');
-        name.className = 'res-name';
-        name.textContent = r.name;
-        left.appendChild(time);
-        left.appendChild(name);
-        row.appendChild(left);
-
-        // Solo el navegador que creó la reserva ve la opción de cancelarla.
-        // Las reservas antiguas (sin ownerId) quedan visibles pero no borrables.
-        if(r.ownerId && r.ownerId === ownerId){
-          const del = document.createElement('button');
-          del.className = 'del-btn';
-          del.setAttribute('aria-label', 'Cancelar tu reserva');
-          del.title = 'Cancelar mi reserva';
-          del.textContent = '\u2715';
-          del.addEventListener('click', async function(){
-            const ok = window.confirm('¿Cancelar tu reserva de ' + (r.startTime || r.time) + (r.endTime ? ' a ' + r.endTime : '') + '?');
-            if(!ok) return;
-            state.reservas = state.reservas.filter(function(x){ return x.id !== r.id; });
-            await saveReservas();
-            renderCalendar();
-            renderPanel();
-          });
-          row.appendChild(del);
-        }
-        panelEl.appendChild(row);
-      });
-    }
-
-    if(isPast){
-      const note = document.createElement('p');
-      note.className = 'past-note';
-      note.textContent = 'Esta fecha ya pasó.';
-      panelEl.appendChild(note);
-      return;
-    }
-
-    const form = document.createElement('form');
-
-    const nameField = document.createElement('div');
-    nameField.className = 'field name';
-    nameField.innerHTML = '<label for="nameInput">Nombre</label>';
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.id = 'nameInput';
-    nameInput.placeholder = 'Tu nombre';
-    nameInput.maxLength = 40;
-    nameField.appendChild(nameInput);
-
-    const startField = document.createElement('div');
-    startField.className = 'field time';
-    startField.innerHTML = '<label for="startInput">Desde</label>';
-    const startInput = document.createElement('input');
-    startInput.type = 'time';
-    startInput.id = 'startInput';
-    startField.appendChild(startInput);
-
-    const endField = document.createElement('div');
-    endField.className = 'field time';
-    endField.innerHTML = '<label for="endInput">Hasta</label>';
-    const endInput = document.createElement('input');
-    endInput.type = 'time';
-    endInput.id = 'endInput';
-    endField.appendChild(endInput);
-
-    const submitBtn = document.createElement('button');
-    submitBtn.type = 'submit';
-    submitBtn.textContent = 'Reservar';
-
-    const errorEl = document.createElement('p');
-    errorEl.className = 'error-msg';
-
-    form.appendChild(nameField);
-    form.appendChild(startField);
-    form.appendChild(endField);
-    form.appendChild(submitBtn);
-    form.appendChild(errorEl);
-
-    form.addEventListener('submit', async function(e){
-      e.preventDefault();
-      const name = nameInput.value.trim();
-      const startTime = startInput.value;
-      const endTime = endInput.value;
-
-      if(!name || !startTime || !endTime){
-        errorEl.textContent = 'Completá tu nombre, hora de inicio y hora de fin.';
-        errorEl.style.display = 'block';
-        return;
-      }
-      if(endTime <= startTime){
-        errorEl.textContent = 'La hora de fin tiene que ser posterior a la hora de inicio.';
-        errorEl.style.display = 'block';
-        return;
-      }
-      const clash = reservasDelDia(dateStr).some(function(r){
-        const rStart = r.startTime || r.time;
-        const rEnd = r.endTime || r.time;
-        return startTime < rEnd && endTime > rStart;
-      });
-      if(clash){
-        errorEl.textContent = 'Esa franja se superpone con otra reserva. Elegí otro horario.';
-        errorEl.style.display = 'block';
-        return;
-      }
-      errorEl.style.display = 'none';
-
-      state.reservas.push({ id: dateStr + '-' + startTime + '-' + Date.now(), date: dateStr, startTime: startTime, endTime: endTime, name: name, ownerId: ownerId });
-      await saveReservas();
+    cell.addEventListener('click', function(){
+      state.selectedDate = dateStr;
       renderCalendar();
       renderPanel();
     });
+    gridEl.appendChild(cell);
+  }
+}
 
-    panelEl.appendChild(form);
+function renderPanel(){
+  const dateStr = state.selectedDate;
+  const list = reservasDelDia(dateStr);
+  const isPast = parseDate(dateStr) < today;
+
+  panelEl.innerHTML = '';
+
+  const heading = document.createElement('h2');
+  heading.textContent = displayDate(dateStr);
+  panelEl.appendChild(heading);
+
+  if(!state.ready){
+    const loading = document.createElement('p');
+    loading.className = 'empty-note';
+    loading.textContent = 'Conectando con las reservas…';
+    panelEl.appendChild(loading);
+    return;
   }
 
-  document.getElementById('prevMonth').addEventListener('click', function(){
-    state.viewMonth--;
-    if(state.viewMonth < 0){ state.viewMonth = 11; state.viewYear--; }
-    renderCalendar();
-  });
-  document.getElementById('nextMonth').addEventListener('click', function(){
-    state.viewMonth++;
-    if(state.viewMonth > 11){ state.viewMonth = 0; state.viewYear++; }
-    renderCalendar();
+  if(list.length === 0){
+    const empty = document.createElement('p');
+    empty.className = 'empty-note';
+    empty.textContent = 'Todavía nadie reservó este día.';
+    panelEl.appendChild(empty);
+  } else {
+    list.forEach(function(r){
+      const row = document.createElement('div');
+      row.className = 'res-row';
+
+      const left = document.createElement('div');
+      left.className = 'res-left';
+      const time = document.createElement('span');
+      time.className = 'res-time';
+      time.textContent = r.startTime + '–' + r.endTime;
+      const name = document.createElement('span');
+      name.className = 'res-name';
+      name.textContent = r.name;
+      left.appendChild(time);
+      left.appendChild(name);
+      row.appendChild(left);
+
+      if(r.owner === state.uid){
+        const del = document.createElement('button');
+        del.className = 'del-btn';
+        del.setAttribute('aria-label', 'Cancelar tu reserva');
+        del.title = 'Cancelar mi reserva';
+        del.textContent = '\u2715';
+        del.addEventListener('click', async function(){
+          const ok = window.confirm('¿Cancelar tu reserva de ' + r.startTime + ' a ' + r.endTime + '?');
+          if(!ok) return;
+          try {
+            await remove(ref(db, 'reservas/' + r.id));
+          } catch(err) {
+            window.alert('No se pudo cancelar la reserva. Recargá la página e intentá nuevamente.');
+            console.error(err);
+          }
+        });
+        row.appendChild(del);
+      }
+      panelEl.appendChild(row);
+    });
+  }
+
+  if(isPast){
+    const note = document.createElement('p');
+    note.className = 'past-note';
+    note.textContent = 'Esta fecha ya pasó.';
+    panelEl.appendChild(note);
+    return;
+  }
+
+  const form = document.createElement('form');
+
+  const nameField = document.createElement('div');
+  nameField.className = 'field name';
+  nameField.innerHTML = '<label for="nameInput">Nombre</label>';
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.id = 'nameInput';
+  nameInput.placeholder = 'Tu nombre';
+  nameInput.maxLength = 40;
+  nameField.appendChild(nameInput);
+
+  const startField = document.createElement('div');
+  startField.className = 'field time';
+  startField.innerHTML = '<label for="startInput">Desde</label>';
+  const startInput = document.createElement('input');
+  startInput.type = 'time';
+  startInput.id = 'startInput';
+  startField.appendChild(startInput);
+
+  const endField = document.createElement('div');
+  endField.className = 'field time';
+  endField.innerHTML = '<label for="endInput">Hasta</label>';
+  const endInput = document.createElement('input');
+  endInput.type = 'time';
+  endInput.id = 'endInput';
+  endField.appendChild(endInput);
+
+  const submitBtn = document.createElement('button');
+  submitBtn.type = 'submit';
+  submitBtn.textContent = 'Reservar';
+
+  const errorEl = document.createElement('p');
+  errorEl.className = 'error-msg';
+
+  form.appendChild(nameField);
+  form.appendChild(startField);
+  form.appendChild(endField);
+  form.appendChild(submitBtn);
+  form.appendChild(errorEl);
+
+  form.addEventListener('submit', async function(e){
+    e.preventDefault();
+    const name = nameInput.value.trim();
+    const startTime = startInput.value;
+    const endTime = endInput.value;
+
+    if(!name || !startTime || !endTime){
+      errorEl.textContent = 'Completá tu nombre, hora de inicio y hora de fin.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    if(endTime <= startTime){
+      errorEl.textContent = 'La hora de fin tiene que ser posterior a la hora de inicio.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    const clash = reservasDelDia(dateStr).some(function(r){
+      return startTime < r.endTime && endTime > r.startTime;
+    });
+    if(clash){
+      errorEl.textContent = 'Esa franja se superpone con otra reserva. Elegí otro horario.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    errorEl.style.display = 'none';
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Reservando…';
+
+    const id = dateStr + '-' + startTime.replace(':','') + '-' + Date.now();
+    const reserva = { date: dateStr, startTime, endTime, name, owner: state.uid };
+
+    try {
+      await set(ref(db, 'reservas/' + id), reserva);
+    } catch(err) {
+      errorEl.textContent = 'No se pudo guardar la reserva. Revisá la conexión e intentá nuevamente.';
+      errorEl.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Reservar';
+      console.error(err);
+    }
   });
 
-  (async function init(){
-    renderCalendar();
-    panelEl.innerHTML = '<p class="empty-note">Cargando reservas…</p>';
-    await loadReservas();
-    renderCalendar();
-    renderPanel();
-  })();
-})();
+  panelEl.appendChild(form);
+}
+
+document.getElementById('prevMonth').addEventListener('click', function(){
+  state.viewMonth--;
+  if(state.viewMonth < 0){ state.viewMonth = 11; state.viewYear--; }
+  renderCalendar();
+});
+document.getElementById('nextMonth').addEventListener('click', function(){
+  state.viewMonth++;
+  if(state.viewMonth > 11){ state.viewMonth = 0; state.viewYear++; }
+  renderCalendar();
+});
+
+renderCalendar();
+renderPanel();
+
+onAuthStateChanged(auth, function(user){
+  if(user){
+    state.uid = user.uid;
+    const reservasRef = ref(db, 'reservas');
+    onValue(reservasRef, function(snapshot){
+      const data = snapshot.val() || {};
+      state.reservas = Object.entries(data).map(function([id, r]){ return { id, ...r }; });
+      state.ready = true;
+      renderCalendar();
+      renderPanel();
+    }, function(err){
+      state.ready = true;
+      panelEl.innerHTML = '<p class="error-msg" style="display:block">No se pudieron cargar las reservas. Revisá las reglas de Firebase.</p>';
+      console.error(err);
+    });
+  }
+});
+
+signInAnonymously(auth).catch(function(err){
+  state.ready = true;
+  panelEl.innerHTML = '<p class="error-msg" style="display:block">No se pudo iniciar la sesión anónima. Revisá que Authentication → Anónimo esté habilitado.</p>';
+  console.error(err);
+});
 </script>
 </body>
 </html>
