@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sala de ensayo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F1ECE1;
+    --paper-line:#DCD3BE;
+    --ink:#26313A;
+    --ink-soft:#5B6670;
+    --ink-faint:#8B9299;
+    --teal:#1F6F5C;
+    --teal-dark:#154A3E;
+    --teal-wash:#E1EDE8;
+    --red:#B3402F;
+    --white:#FFFFFF;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{
+    max-width:640px;
+    margin:0 auto;
+    padding:32px 20px 56px;
+  }
+  header{
+    border-bottom:1px solid var(--paper-line);
+    padding-bottom:20px;
+    margin-bottom:24px;
+  }
+  header h1{
+    font-family:'Source Serif 4',serif;
+    font-weight:600;
+    font-size:26px;
+    margin:0 0 6px;
+    letter-spacing:-0.01em;
+  }
+  header p{
+    font-size:14px;
+    color:var(--ink-soft);
+    margin:0;
+    line-height:1.5;
+    max-width:46ch;
+  }
+  .month-nav{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:20px 0 14px;
+  }
+  .month-nav button{
+    width:34px;
+    height:34px;
+    border-radius:50%;
+    border:1px solid var(--paper-line);
+    background:var(--white);
+    color:var(--ink);
+    font-size:16px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .month-nav button:hover{ border-color:var(--teal); color:var(--teal); }
+  #monthLabel{
+    font-family:'Source Serif 4',serif;
+    font-weight:600;
+    font-size:18px;
+    text-transform:capitalize;
+    margin:0;
+  }
+  #weekdays{
+    display:grid;
+    grid-template-columns:repeat(7,minmax(0,1fr));
+    gap:4px;
+    font-size:11px;
+    color:var(--ink-faint);
+    text-align:center;
+    padding-bottom:6px;
+    text-transform:lowercase;
+  }
+  #calendarGrid{
+    display:grid;
+    grid-template-columns:repeat(7,minmax(0,1fr));
+    gap:4px;
+  }
+  .day-cell{
+    aspect-ratio:1;
+    border-radius:6px;
+    border:1px solid var(--paper-line);
+    background:var(--white);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:2px;
+    cursor:pointer;
+    padding:2px;
+    font-family:'Inter',sans-serif;
+  }
+  .day-cell:hover{ border-color:var(--teal); }
+  .day-cell.selected{ background:var(--teal-wash); border-color:var(--teal); }
+  .day-cell.past{ opacity:0.4; }
+  .day-num{ font-size:13px; }
+  .day-num.today{ color:var(--teal-dark); font-weight:600; }
+  .day-dot{ font-size:9px; color:var(--teal); letter-spacing:1px; line-height:1; }
+  #dayPanel{
+    margin-top:28px;
+    padding-top:20px;
+    border-top:1px solid var(--paper-line);
+  }
+  #dayPanel h2{
+    font-family:'Source Serif 4',serif;
+    font-weight:600;
+    font-size:16px;
+    margin:0 0 14px;
+    text-transform:capitalize;
+  }
+  .empty-note{ font-size:13px; color:var(--ink-faint); margin:0 0 18px; }
+  .res-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:9px 12px;
+    background:var(--white);
+    border:1px solid var(--paper-line);
+    border-radius:6px;
+    margin-bottom:6px;
+  }
+  .res-left{ display:flex; align-items:baseline; gap:10px; }
+  .res-time{ font-size:13px; color:var(--teal-dark); font-weight:600; min-width:42px; }
+  .res-name{ font-size:14px; }
+  .del-btn{
+    width:26px; height:26px; border:none; background:transparent;
+    color:var(--ink-faint); cursor:pointer; font-size:16px; line-height:1;
+    border-radius:4px;
+  }
+  .del-btn:hover{ color:var(--red); background:#F4E6E3; }
+  .past-note{ font-size:13px; color:var(--ink-faint); margin:14px 0 0; }
+  form{ display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:16px; }
+  .field{ display:flex; flex-direction:column; gap:4px; }
+  .field label{ font-size:12px; color:var(--ink-soft); }
+  .field.name{ flex:1; min-width:150px; }
+  .field.time{ width:110px; }
+  input[type=text], input[type=time]{
+    height:36px;
+    border:1px solid var(--paper-line);
+    border-radius:6px;
+    background:var(--white);
+    padding:0 10px;
+    font-size:14px;
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+  }
+  input[type=text]:focus, input[type=time]:focus{
+    outline:none; border-color:var(--teal); box-shadow:0 0 0 2px var(--teal-wash);
+  }
+  button[type=submit]{
+    height:36px;
+    padding:0 16px;
+    border:none;
+    border-radius:6px;
+    background:var(--teal);
+    color:var(--white);
+    font-size:14px;
+    font-weight:500;
+    font-family:'Inter',sans-serif;
+    cursor:pointer;
+  }
+  button[type=submit]:hover{ background:var(--teal-dark); }
+  .error-msg{ font-size:13px; color:var(--red); margin:8px 0 0; width:100%; display:none; }
+  @media (max-width:420px){
+    header h1{ font-size:22px; }
+    .day-num{ font-size:12px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Sala de ensayo</h1>
+    <p>Escribí tu nombre, elegí un día y una franja horaria para reservar la sala. Sin registro ni contraseña — lo ve y lo edita todo el grupo.</p>
+  </header>
+
+  <div class="month-nav">
+    <button id="prevMonth" aria-label="Mes anterior">&#8249;</button>
+    <p id="monthLabel"></p>
+    <button id="nextMonth" aria-label="Mes siguiente">&#8250;</button>
+  </div>
+
+  <div id="weekdays"></div>
+  <div id="calendarGrid"></div>
+
+  <div id="dayPanel"></div>
+</div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'reservas_v1';
+  const OWNER_KEY = 'sala_ensayo_owner_id';
+  let ownerId = localStorage.getItem(OWNER_KEY);
+  if(!ownerId){
+    ownerId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'owner-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    localStorage.setItem(OWNER_KEY, ownerId);
+  }
+  const state = { reservas: [], viewYear: null, viewMonth: null, selectedDate: null };
+
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  state.viewYear = today.getFullYear();
+  state.viewMonth = today.getMonth();
+  state.selectedDate = fmtDate(today);
+
+  const monthLabelEl = document.getElementById('monthLabel');
+  const weekdaysEl = document.getElementById('weekdays');
+  const gridEl = document.getElementById('calendarGrid');
+  const panelEl = document.getElementById('dayPanel');
+
+  const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const DIAS = ['lun','mar','mié','jue','vie','sáb','dom'];
+  DIAS.forEach(function(d){
+    const s = document.createElement('span');
+    s.textContent = d;
+    weekdaysEl.appendChild(s);
+  });
+
+  function fmtDate(d){
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  function parseDate(s){
+    const parts = s.split('-').map(Number);
+    return new Date(parts[0], parts[1]-1, parts[2]);
+  }
+  function displayDate(s){
+    return parseDate(s).toLocaleDateString('es-AR',{ weekday:'long', day:'numeric', month:'long' });
+  }
+
+  async function loadReservas(){
+    try{
+      const res = await window.storage.get(STORAGE_KEY, true);
+      state.reservas = (res && res.value) ? JSON.parse(res.value) : [];
+    }catch(e){
+      state.reservas = [];
+    }
+  }
+  async function saveReservas(){
+    try{
+      await window.storage.set(STORAGE_KEY, JSON.stringify(state.reservas), true);
+    }catch(e){}
+  }
+
+  function reservasDelDia(dateStr){
+    return state.reservas
+      .filter(function(r){ return r.date === dateStr; })
+      .sort(function(a,b){ return (a.startTime || a.time || '').localeCompare(b.startTime || b.time || ''); });
+  }
+
+  function renderCalendar(){
+    monthLabelEl.textContent = MESES[state.viewMonth] + ' ' + state.viewYear;
+    gridEl.innerHTML = '';
+
+    const first = new Date(state.viewYear, state.viewMonth, 1);
+    let startOffset = first.getDay() - 1;
+    if(startOffset < 0) startOffset = 6;
+    const daysInMonth = new Date(state.viewYear, state.viewMonth+1, 0).getDate();
+
+    for(let i=0;i<startOffset;i++){
+      gridEl.appendChild(document.createElement('div'));
+    }
+
+    for(let day=1; day<=daysInMonth; day++){
+      const d = new Date(state.viewYear, state.viewMonth, day);
+      const dateStr = fmtDate(d);
+      const count = reservasDelDia(dateStr).length;
+      const isToday = fmtDate(today) === dateStr;
+      const isSelected = state.selectedDate === dateStr;
+      const isPast = d < today;
+
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      cell.className = 'day-cell' + (isSelected ? ' selected' : '') + (isPast ? ' past' : '');
+      cell.setAttribute('aria-label', displayDate(dateStr) + (count ? ', ' + count + ' reserva(s)' : ', sin reservas'));
+
+      const num = document.createElement('span');
+      num.className = 'day-num' + (isToday ? ' today' : '');
+      num.textContent = day;
+      cell.appendChild(num);
+
+      const dot = document.createElement('span');
+      dot.className = 'day-dot';
+      dot.textContent = count > 0 ? (count > 3 ? '3+' : '\u2022'.repeat(count)) : '\u00A0';
+      cell.appendChild(dot);
+
+      cell.addEventListener('click', function(){
+        state.selectedDate = dateStr;
+        renderCalendar();
+        renderPanel();
+      });
+      gridEl.appendChild(cell);
+    }
+  }
+
+  function renderPanel(){
+    const dateStr = state.selectedDate;
+    const list = reservasDelDia(dateStr);
+    const isPast = parseDate(dateStr) < today;
+
+    panelEl.innerHTML = '';
+
+    const heading = document.createElement('h2');
+    heading.textContent = displayDate(dateStr);
+    panelEl.appendChild(heading);
+
+    if(list.length === 0){
+      const empty = document.createElement('p');
+      empty.className = 'empty-note';
+      empty.textContent = 'Todavía nadie reservó este día.';
+      panelEl.appendChild(empty);
+    } else {
+      list.forEach(function(r){
+        const row = document.createElement('div');
+        row.className = 'res-row';
+
+        const left = document.createElement('div');
+        left.className = 'res-left';
+        const time = document.createElement('span');
+        time.className = 'res-time';
+        time.textContent = (r.startTime || r.time) + (r.endTime ? '–' + r.endTime : '');
+        const name = document.createElement('span');
+        name.className = 'res-name';
+        name.textContent = r.name;
+        left.appendChild(time);
+        left.appendChild(name);
+        row.appendChild(left);
+
+        // Solo el navegador que creó la reserva ve la opción de cancelarla.
+        // Las reservas antiguas (sin ownerId) quedan visibles pero no borrables.
+        if(r.ownerId && r.ownerId === ownerId){
+          const del = document.createElement('button');
+          del.className = 'del-btn';
+          del.setAttribute('aria-label', 'Cancelar tu reserva');
+          del.title = 'Cancelar mi reserva';
+          del.textContent = '\u2715';
+          del.addEventListener('click', async function(){
+            const ok = window.confirm('¿Cancelar tu reserva de ' + (r.startTime || r.time) + (r.endTime ? ' a ' + r.endTime : '') + '?');
+            if(!ok) return;
+            state.reservas = state.reservas.filter(function(x){ return x.id !== r.id; });
+            await saveReservas();
+            renderCalendar();
+            renderPanel();
+          });
+          row.appendChild(del);
+        }
+        panelEl.appendChild(row);
+      });
+    }
+
+    if(isPast){
+      const note = document.createElement('p');
+      note.className = 'past-note';
+      note.textContent = 'Esta fecha ya pasó.';
+      panelEl.appendChild(note);
+      return;
+    }
+
+    const form = document.createElement('form');
+
+    const nameField = document.createElement('div');
+    nameField.className = 'field name';
+    nameField.innerHTML = '<label for="nameInput">Nombre</label>';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.id = 'nameInput';
+    nameInput.placeholder = 'Tu nombre';
+    nameInput.maxLength = 40;
+    nameField.appendChild(nameInput);
+
+    const startField = document.createElement('div');
+    startField.className = 'field time';
+    startField.innerHTML = '<label for="startInput">Desde</label>';
+    const startInput = document.createElement('input');
+    startInput.type = 'time';
+    startInput.id = 'startInput';
+    startField.appendChild(startInput);
+
+    const endField = document.createElement('div');
+    endField.className = 'field time';
+    endField.innerHTML = '<label for="endInput">Hasta</label>';
+    const endInput = document.createElement('input');
+    endInput.type = 'time';
+    endInput.id = 'endInput';
+    endField.appendChild(endInput);
+
+    const submitBtn = document.createElement('button');
+    submitBtn.type = 'submit';
+    submitBtn.textContent = 'Reservar';
+
+    const errorEl = document.createElement('p');
+    errorEl.className = 'error-msg';
+
+    form.appendChild(nameField);
+    form.appendChild(startField);
+    form.appendChild(endField);
+    form.appendChild(submitBtn);
+    form.appendChild(errorEl);
+
+    form.addEventListener('submit', async function(e){
+      e.preventDefault();
+      const name = nameInput.value.trim();
+      const startTime = startInput.value;
+      const endTime = endInput.value;
+
+      if(!name || !startTime || !endTime){
+        errorEl.textContent = 'Completá tu nombre, hora de inicio y hora de fin.';
+        errorEl.style.display = 'block';
+        return;
+      }
+      if(endTime <= startTime){
+        errorEl.textContent = 'La hora de fin tiene que ser posterior a la hora de inicio.';
+        errorEl.style.display = 'block';
+        return;
+      }
+      const clash = reservasDelDia(dateStr).some(function(r){
+        const rStart = r.startTime || r.time;
+        const rEnd = r.endTime || r.time;
+        return startTime < rEnd && endTime > rStart;
+      });
+      if(clash){
+        errorEl.textContent = 'Esa franja se superpone con otra reserva. Elegí otro horario.';
+        errorEl.style.display = 'block';
+        return;
+      }
+      errorEl.style.display = 'none';
+
+      state.reservas.push({ id: dateStr + '-' + startTime + '-' + Date.now(), date: dateStr, startTime: startTime, endTime: endTime, name: name, ownerId: ownerId });
+      await saveReservas();
+      renderCalendar();
+      renderPanel();
+    });
+
+    panelEl.appendChild(form);
+  }
+
+  document.getElementById('prevMonth').addEventListener('click', function(){
+    state.viewMonth--;
+    if(state.viewMonth < 0){ state.viewMonth = 11; state.viewYear--; }
+    renderCalendar();
+  });
+  document.getElementById('nextMonth').addEventListener('click', function(){
+    state.viewMonth++;
+    if(state.viewMonth > 11){ state.viewMonth = 0; state.viewYear++; }
+    renderCalendar();
+  });
+
+  (async function init(){
+    renderCalendar();
+    panelEl.innerHTML = '<p class="empty-note">Cargando reservas…</p>';
+    await loadReservas();
+    renderCalendar();
+    renderPanel();
+  })();
+})();
+</script>
+</body>
+</html>
