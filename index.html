@@ -352,18 +352,9 @@ function renderPanel(){
         del.addEventListener('click', async function(){
           const ok = window.confirm('¿Cancelar tu reserva de ' + r.startTime + ' a ' + r.endTime + '?');
           if(!ok) return;
-try {
-  await set(ref(db, 'reservas/' + id), reserva);
-  localStorage.setItem('nombreReserva', name);
-  submitBtn.textContent = 'Reserva guardada ✓';
-
-  setTimeout(function(){
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Reservar';
-  }, 2000);
-
-} catch(err) {
-  
+          try {
+            await remove(ref(db, 'reservas/' + r.id));
+          } catch(err) {
             window.alert('No se pudo cancelar la reserva. Recargá la página e intentá nuevamente.');
             console.error(err);
           }
@@ -474,6 +465,15 @@ try {
 
     try {
       await set(ref(db, 'reservas/' + id), reserva);
+
+      localStorage.setItem('nombreReserva', name);
+      submitBtn.textContent = 'Reserva guardada ✓';
+
+      setTimeout(function(){
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Reservar';
+      }, 2000);
+
     } catch(err) {
       errorEl.textContent = 'No se pudo guardar la reserva. Revisá la conexión e intentá nuevamente.';
       errorEl.style.display = 'block';
