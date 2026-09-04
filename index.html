@@ -387,7 +387,7 @@
 
   <section id="paymentsSection">
     <h2 class="payments-title">Pagos</h2>
-    <p class="payments-subtitle">Cuota mensual de la sala.</p>
+    <p class="payments-subtitle">Cuota mensual de la sala. Se paga hasta el día 10 de cada mes — enviar el comprobante por el grupo de WhatsApp.</p>
 
     <div class="payments-month-nav">
       <button id="prevPaymentMonth" aria-label="Mes anterior">&#8249;</button>
@@ -400,6 +400,36 @@
   </section>
 </div>
 
+<!--
+  IMPORTANTE — SEGURIDAD:
+  Este archivo por sí solo NO protege los datos. Los botones de admin que
+  ves en la interfaz solo controlan qué se MUESTRA; lo que realmente
+  decide quién puede escribir en la base son las Reglas de Firebase.
+
+  Andá a Firebase Console → tu proyecto → Realtime Database → Rules,
+  y pegá esto (reemplaza cualquier regla de "modo test"):
+
+  {
+    "rules": {
+      "reservas": {
+        ".read": true,
+        "$id": {
+          ".write": "auth != null && (!data.exists() || data.child('owner').val() === auth.uid || auth.token.firebase.sign_in_provider !== 'anonymous')"
+        }
+      },
+      "pagos": {
+        ".read": true,
+        ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous'"
+      }
+    }
+  }
+
+  Esto permite: cualquiera lee todo y crea una reserva nueva; solo el
+  dueño de una reserva (o el admin logueado con email/contraseña) puede
+  editarla o borrarla; y solo el admin puede tocar "pagos". Sin esto,
+  cualquiera con el link puede escribir directamente en la base
+  saltándose por completo esta página.
+-->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -596,15 +626,19 @@ function renderPanel(){
       left.appendChild(name);
       row.appendChild(left);
 
-      if(r.owner === state.uid){
+      const isOwner = r.owner === state.uid;
+      if(isOwner || state.isAdmin){
         const del = document.createElement('button');
         del.className = 'del-btn';
-        del.setAttribute('aria-label', 'Cancelar tu reserva');
-        del.title = 'Cancelar mi reserva';
+        del.setAttribute('aria-label', isOwner ? 'Cancelar tu reserva' : 'Cancelar la reserva de ' + r.name);
+        del.title = isOwner ? 'Cancelar mi reserva' : 'Cancelar reserva (admin)';
         del.textContent = '\u2715';
 
         del.addEventListener('click', async function(){
-          const ok = window.confirm('¿Cancelar tu reserva de ' + r.startTime + ' a ' + r.endTime + '?');
+          const confirmMsg = isOwner
+            ? '¿Cancelar tu reserva de ' + r.startTime + ' a ' + r.endTime + '?'
+            : '¿Cancelar la reserva de ' + r.name + ' (' + r.startTime + ' a ' + r.endTime + ')?';
+          const ok = window.confirm(confirmMsg);
           if(!ok) return;
 
           try {
