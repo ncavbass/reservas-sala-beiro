@@ -352,9 +352,18 @@ function renderPanel(){
         del.addEventListener('click', async function(){
           const ok = window.confirm('¿Cancelar tu reserva de ' + r.startTime + ' a ' + r.endTime + '?');
           if(!ok) return;
-          try {
-            await remove(ref(db, 'reservas/' + r.id));
-          } catch(err) {
+try {
+  await set(ref(db, 'reservas/' + id), reserva);
+  localStorage.setItem('nombreReserva', name);
+  submitBtn.textContent = 'Reserva guardada ✓';
+
+  setTimeout(function(){
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Reservar';
+  }, 2000);
+
+} catch(err) {
+  
             window.alert('No se pudo cancelar la reserva. Recargá la página e intentá nuevamente.');
             console.error(err);
           }
@@ -383,6 +392,7 @@ function renderPanel(){
   nameInput.id = 'nameInput';
   nameInput.placeholder = '';
   nameInput.maxLength = 40;
+  nameInput.value = localStorage.getItem('nombreReserva') || '';
   nameField.appendChild(nameInput);
 
   const startField = document.createElement('div');
@@ -400,6 +410,22 @@ function renderPanel(){
   endInput.type = 'time';
   endInput.id = 'endInput';
   endField.appendChild(endInput);
+
+  startInput.addEventListener('change', function(){
+  if(!startInput.value) return;
+
+  const [hours, minutes] = startInput.value.split(':').map(Number);
+  const totalMinutes = hours * 60 + minutes + 120;
+
+  if(totalMinutes < 24 * 60){
+    const endHours = Math.floor(totalMinutes / 60);
+    const endMinutes = totalMinutes % 60;
+
+    endInput.value =
+      String(endHours).padStart(2,'0') + ':' +
+      String(endMinutes).padStart(2,'0');
+  }
+});
 
   const submitBtn = document.createElement('button');
   submitBtn.type = 'submit';
