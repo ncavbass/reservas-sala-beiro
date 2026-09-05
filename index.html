@@ -305,6 +305,25 @@
     border-color:var(--teal);
     color:var(--teal-dark);
   }
+  .save-payments-btn{
+    display:block;
+    width:100%;
+    height:38px;
+    margin-top:12px;
+    border:none;
+    border-radius:6px;
+    background:var(--teal);
+    color:var(--white);
+    font:600 14px 'Inter',sans-serif;
+    cursor:pointer;
+  }
+  .save-payments-btn:hover{
+    background:var(--teal-dark);
+  }
+  .save-payments-btn:disabled{
+    opacity:.7;
+    cursor:default;
+  }
   .admin-area{
     margin-top:16px;
     padding-top:14px;
@@ -700,12 +719,12 @@ function renderPanel(){
     return;
   }
 
-  if(list.length === 0){
+  if(list.length === 0 && !isPast){
     const empty = document.createElement('p');
     empty.className = 'empty-note';
     empty.textContent = 'Todavía nadie reservó este día.';
     panelEl.appendChild(empty);
-  } else {
+  } else if(list.length > 0) {
     list.forEach(function(r){
       const row = document.createElement('div');
       row.className = 'res-row';
@@ -967,6 +986,29 @@ function renderPayments(){
 
   paymentsPanelEl.appendChild(list);
 
+  if(state.isAdmin){
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'save-payments-btn';
+    saveBtn.textContent = 'Guardar';
+
+    saveBtn.addEventListener('click', async function(){
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Guardando…';
+      try {
+        await signOut(auth);
+        await signInAnonymously(auth);
+      } catch(err) {
+        window.alert('No se pudo guardar. Intentá de nuevo.');
+        console.error(err);
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Guardar';
+      }
+    });
+
+    paymentsPanelEl.appendChild(saveBtn);
+  }
+
   renderAdminArea();
 }
 
@@ -979,25 +1021,9 @@ function renderAdminArea(){
     row.className = 'admin-state';
 
     const text = document.createElement('span');
-    text.textContent = 'Administrador';
-
-    const logout = document.createElement('button');
-    logout.type = 'button';
-    logout.className = 'admin-logout';
-    logout.textContent = 'Salir';
-
-    logout.addEventListener('click', async function(){
-      try {
-        await signOut(auth);
-        await signInAnonymously(auth);
-      } catch(err) {
-        window.alert('No se pudo cerrar el modo administrador.');
-        console.error(err);
-      }
-    });
+    text.textContent = 'Administrador — marcá los pagos y tocá "Guardar" para terminar';
 
     row.appendChild(text);
-    row.appendChild(logout);
     adminAreaEl.appendChild(row);
     return;
   }
