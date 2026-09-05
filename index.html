@@ -329,19 +329,29 @@
   }
   .admin-login form{
     margin:0;
-    align-items:flex-end;
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:10px;
+    flex-wrap:nowrap;
   }
   .admin-login .field{
-    flex:1;
-    min-width:180px;
+    flex:none;
+    width:100%;
+    min-width:0;
+  }
+  .admin-login button[type=submit]{
+    align-self:flex-start;
   }
   .password-wrap{
     position:relative;
     display:flex;
+    width:100%;
   }
   .password-wrap input{
     flex:1;
-    padding-right:70px;
+    width:100%;
+    padding-right:64px;
   }
   .password-toggle{
     position:absolute;
@@ -353,10 +363,17 @@
     color:var(--teal-dark);
     font:600 11px 'Inter',sans-serif;
     cursor:pointer;
-    padding:4px 6px;
+    padding:6px 8px;
+    border-radius:4px;
+    -webkit-user-select:none;
+    user-select:none;
+    touch-action:manipulation;
   }
   .password-toggle:hover{
-    text-decoration:underline;
+    background:var(--teal-wash);
+  }
+  .password-toggle:active{
+    background:var(--teal-wash);
   }
   .admin-lock-msg{
     font-size:12px;
@@ -1045,13 +1062,39 @@ function renderAdminArea(){
   toggleBtn.type = 'button';
   toggleBtn.className = 'password-toggle';
   toggleBtn.textContent = 'Mostrar';
-  toggleBtn.setAttribute('aria-label', 'Mostrar contraseña');
-  toggleBtn.addEventListener('click', function(){
-    const showing = passwordInput.type === 'text';
-    passwordInput.type = showing ? 'password' : 'text';
-    toggleBtn.textContent = showing ? 'Mostrar' : 'Ocultar';
-    toggleBtn.setAttribute('aria-label', showing ? 'Mostrar contraseña' : 'Ocultar contraseña');
+  toggleBtn.title = 'Mantené presionado para ver la contraseña';
+  toggleBtn.setAttribute('aria-label', 'Mantener presionado para ver la contraseña');
+
+  function revealPassword(){
+    passwordInput.type = 'text';
+  }
+  function hidePassword(){
+    passwordInput.type = 'password';
+  }
+
+  // Mouse
+  toggleBtn.addEventListener('mousedown', function(e){ e.preventDefault(); revealPassword(); });
+  toggleBtn.addEventListener('mouseup', hidePassword);
+  toggleBtn.addEventListener('mouseleave', hidePassword);
+  // Touch (celular)
+  toggleBtn.addEventListener('touchstart', function(e){ e.preventDefault(); revealPassword(); }, { passive: false });
+  toggleBtn.addEventListener('touchend', hidePassword);
+  toggleBtn.addEventListener('touchcancel', hidePassword);
+  // Teclado (accesibilidad: mantener Enter/Espacio apretado)
+  toggleBtn.addEventListener('keydown', function(e){
+    if(e.key === ' ' || e.key === 'Enter'){
+      e.preventDefault();
+      revealPassword();
+    }
   });
+  toggleBtn.addEventListener('keyup', function(e){
+    if(e.key === ' ' || e.key === 'Enter'){
+      hidePassword();
+    }
+  });
+  // Si el foco se pierde mientras está mostrando, ocultarla igual
+  toggleBtn.addEventListener('blur', hidePassword);
+
   passwordWrap.appendChild(toggleBtn);
 
   passwordField.appendChild(passwordWrap);
