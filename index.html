@@ -217,7 +217,7 @@
   .payments-month-nav{
     display:flex;
     align-items:center;
-    justify-content:space-between;
+    justify-content:center;
     margin:18px 0 12px;
   }
   .payments-summary{
@@ -335,6 +335,35 @@
     flex:1;
     min-width:180px;
   }
+  .password-wrap{
+    position:relative;
+    display:flex;
+  }
+  .password-wrap input{
+    flex:1;
+    padding-right:70px;
+  }
+  .password-toggle{
+    position:absolute;
+    right:4px;
+    top:50%;
+    transform:translateY(-50%);
+    border:none;
+    background:transparent;
+    color:var(--teal-dark);
+    font:600 11px 'Inter',sans-serif;
+    cursor:pointer;
+    padding:4px 6px;
+  }
+  .password-toggle:hover{
+    text-decoration:underline;
+  }
+  .admin-lock-msg{
+    font-size:12px;
+    color:var(--red);
+    margin:0;
+    line-height:1.5;
+  }
   .admin-state{
     display:flex;
     align-items:center;
@@ -390,9 +419,7 @@
     <p class="payments-subtitle">Cuota mensual de la sala. Se paga hasta el día 10 de cada mes — enviar el comprobante por el grupo de WhatsApp.</p>
 
     <div class="payments-month-nav">
-      <button id="prevPaymentMonth" aria-label="Mes anterior">&#8249;</button>
       <p id="paymentMonthLabel"></p>
-      <button id="nextPaymentMonth" aria-label="Mes siguiente">&#8250;</button>
     </div>
 
     <div id="paymentsPanel"></div>
@@ -528,6 +555,61 @@ function displayDate(s){
 
 function paymentMonthKey(){
   return state.paymentYear + '-' + String(state.paymentMonth + 1).padStart(2,'0');
+}
+
+/* ---------------- BLOQUEO DE INTENTOS DE LOGIN (ADMIN) ---------------- */
+/* Nota: esto se guarda en localStorage del navegador. Frena intentos
+   repetidos desde el mismo dispositivo, pero no reemplaza una protección
+   del lado del servidor (eso requeriría Firebase App Check o una Cloud
+   Function con rate limiting). */
+
+const ADMIN_LOCK_KEY = 'adminLoginLock_v1';
+
+function getAdminLockState(){
+  try{
+    const raw = localStorage.getItem(ADMIN_LOCK_KEY);
+    if(!raw) return { fails: 0, lockUntil: 0 };
+    const parsed = JSON.parse(raw);
+    return { fails: parsed.fails || 0, lockUntil: parsed.lockUntil || 0 };
+  }catch(e){
+    return { fails: 0, lockUntil: 0 };
+  }
+}
+
+function setAdminLockState(s){
+  try{ localStorage.setItem(ADMIN_LOCK_KEY, JSON.stringify(s)); }catch(e){}
+}
+
+function registerAdminLoginFailure(){
+  const s = getAdminLockState();
+  s.fails += 1;
+  const now = Date.now();
+  if(s.fails === 3){
+    s.lockUntil = now + 15 * 60 * 1000; // 15 minutos
+  } else if(s.fails >= 8){
+    s.lockUntil = now + 6 * 60 * 60 * 1000; // 6 horas
+  }
+  setAdminLockState(s);
+  return s;
+}
+
+function registerAdminLoginSuccess(){
+  setAdminLockState({ fails: 0, lockUntil: 0 });
+}
+
+function adminLockRemainingMs(){
+  const s = getAdminLockState();
+  const remaining = s.lockUntil - Date.now();
+  return remaining > 0 ? remaining : 0;
+}
+
+function formatLockRemaining(ms){
+  if(ms > 60 * 60 * 1000){
+    const hrs = Math.ceil(ms / (60 * 60 * 1000));
+    return hrs + (hrs === 1 ? ' hora' : ' horas');
+  }
+  const mins = Math.max(1, Math.ceil(ms / (60 * 1000)));
+  return mins + (mins === 1 ? ' minuto' : ' minutos');
 }
 
 function reservasDelDia(dateStr){
@@ -873,6 +955,7 @@ function renderPayments(){
 
 function renderAdminArea(){
   adminAreaEl.innerHTML = '';
+  clearTimeout(state.lockTimer);
 
   if(state.isAdmin){
     const row = document.createElement('div');
@@ -899,6 +982,22 @@ function renderAdminArea(){
     row.appendChild(text);
     row.appendChild(logout);
     adminAreaEl.appendChild(row);
+    return;
+  }
+
+  const lockRemaining = adminLockRemainingMs();
+  if(lockRemaining > 0){
+    state.showAdminLogin = false;
+    const lockBox = document.createElement('div');
+    lockBox.className = 'admin-login';
+    const msg = document.createElement('p');
+    msg.className = 'admin-lock-msg';
+    msg.textContent = 'Demasiados intentos fallidos. Podés volver a intentar en ' + formatLockRemaining(lockRemaining) + '.';
+    lockBox.appendChild(msg);
+    adminAreaEl.appendChild(lockBox);
+
+    // Vuelve a renderizar automáticamente apenas se cumpla el bloqueo.
+    state.lockTimer = setTimeout(renderAdminArea, Math.min(lockRemaining + 1000, 2147483647));
     return;
   }
 
@@ -932,11 +1031,30 @@ function renderAdminArea(){
   const passwordField = document.createElement('div');
   passwordField.className = 'field';
   passwordField.innerHTML = '<label for="adminPassword">Contraseña</label>';
+
+  const passwordWrap = document.createElement('div');
+  passwordWrap.className = 'password-wrap';
+
   const passwordInput = document.createElement('input');
   passwordInput.type = 'password';
   passwordInput.id = 'adminPassword';
   passwordInput.autocomplete = 'current-password';
-  passwordField.appendChild(passwordInput);
+  passwordWrap.appendChild(passwordInput);
+
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'password-toggle';
+  toggleBtn.textContent = 'Mostrar';
+  toggleBtn.setAttribute('aria-label', 'Mostrar contraseña');
+  toggleBtn.addEventListener('click', function(){
+    const showing = passwordInput.type === 'text';
+    passwordInput.type = showing ? 'password' : 'text';
+    toggleBtn.textContent = showing ? 'Mostrar' : 'Ocultar';
+    toggleBtn.setAttribute('aria-label', showing ? 'Mostrar contraseña' : 'Ocultar contraseña');
+  });
+  passwordWrap.appendChild(toggleBtn);
+
+  passwordField.appendChild(passwordWrap);
 
   const submit = document.createElement('button');
   submit.type = 'submit';
@@ -953,6 +1071,11 @@ function renderAdminArea(){
   form.addEventListener('submit', async function(e){
     e.preventDefault();
 
+    if(adminLockRemainingMs() > 0){
+      renderAdminArea();
+      return;
+    }
+
     const email = emailInput.value.trim();
     const password = passwordInput.value;
 
@@ -968,9 +1091,27 @@ function renderAdminArea(){
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      registerAdminLoginSuccess();
       state.showAdminLogin = false;
     } catch(err) {
-      error.textContent = 'Email o contraseña incorrectos.';
+      const lockState = registerAdminLoginFailure();
+      const remaining = adminLockRemainingMs();
+
+      if(remaining > 0){
+        renderAdminArea();
+        return;
+      }
+
+      let attemptsMsg = '';
+      if(lockState.fails < 3){
+        const left = 3 - lockState.fails;
+        attemptsMsg = ' (' + left + (left === 1 ? ' intento' : ' intentos') + ' antes del bloqueo)';
+      } else if(lockState.fails < 8){
+        const left = 8 - lockState.fails;
+        attemptsMsg = ' (' + left + (left === 1 ? ' intento' : ' intentos') + ' antes del bloqueo largo)';
+      }
+
+      error.textContent = 'Email o contraseña incorrectos.' + attemptsMsg;
       error.style.display = 'block';
       submit.disabled = false;
       submit.textContent = 'Entrar';
@@ -1012,24 +1153,6 @@ document.getElementById('nextMonth').addEventListener('click', function(){
     state.viewYear++;
   }
   renderCalendar();
-});
-
-document.getElementById('prevPaymentMonth').addEventListener('click', function(){
-  state.paymentMonth--;
-  if(state.paymentMonth < 0){
-    state.paymentMonth = 11;
-    state.paymentYear--;
-  }
-  renderPayments();
-});
-
-document.getElementById('nextPaymentMonth').addEventListener('click', function(){
-  state.paymentMonth++;
-  if(state.paymentMonth > 11){
-    state.paymentMonth = 0;
-    state.paymentYear++;
-  }
-  renderPayments();
 });
 
 /* ---------------- FIREBASE ---------------- */
