@@ -148,6 +148,19 @@
   .res-left{ display:flex; align-items:baseline; gap:10px; }
   .res-time{ font-size:13px; color:var(--teal-dark); font-weight:600; min-width:42px; }
   .res-name{ font-size:14px; }
+  .res-actions{ display:flex; align-items:center; gap:2px; }
+  .cal-btn{
+    width:26px;
+    height:26px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:4px;
+    font-size:14px;
+    text-decoration:none;
+    line-height:1;
+  }
+  .cal-btn:hover{ background:var(--teal-wash); }
   .del-btn{
     width:26px; height:26px; border:none; background:transparent;
     color:var(--ink-faint); cursor:pointer; font-size:16px; line-height:1;
@@ -593,6 +606,18 @@ function paymentMonthKey(){
   return state.paymentYear + '-' + String(state.paymentMonth + 1).padStart(2,'0');
 }
 
+function googleCalendarUrl(r){
+  const start = r.date.replace(/-/g, '') + 'T' + r.startTime.replace(':', '') + '00';
+  const end = r.date.replace(/-/g, '') + 'T' + r.endTime.replace(':', '') + '00';
+  const text = encodeURIComponent('Sala de ensayo — ' + r.name);
+  const details = encodeURIComponent('Reserva de la sala de ensayo.');
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE'
+    + '&text=' + text
+    + '&dates=' + start + '/' + end
+    + '&details=' + details
+    + '&ctz=America/Argentina/Buenos_Aires';
+}
+
 /* ---------------- BLOQUEO DE INTENTOS DE LOGIN (ADMIN) ---------------- */
 /* Nota: esto se guarda en localStorage del navegador. Frena intentos
    repetidos desde el mismo dispositivo, pero no reemplaza una protección
@@ -744,6 +769,19 @@ function renderPanel(){
       left.appendChild(name);
       row.appendChild(left);
 
+      const actions = document.createElement('div');
+      actions.className = 'res-actions';
+
+      const calBtn = document.createElement('a');
+      calBtn.className = 'cal-btn';
+      calBtn.href = googleCalendarUrl(r);
+      calBtn.target = '_blank';
+      calBtn.rel = 'noopener';
+      calBtn.textContent = '📅';
+      calBtn.title = 'Guardar en Google Calendar';
+      calBtn.setAttribute('aria-label', 'Guardar la reserva de ' + r.name + ' en Google Calendar');
+      actions.appendChild(calBtn);
+
       const isOwner = r.owner === state.uid;
       if(isOwner || state.isAdmin){
         const del = document.createElement('button');
@@ -767,8 +805,10 @@ function renderPanel(){
           }
         });
 
-        row.appendChild(del);
+        actions.appendChild(del);
       }
+
+      row.appendChild(actions);
 
       panelEl.appendChild(row);
     });
