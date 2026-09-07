@@ -139,6 +139,8 @@
     display:flex;
     align-items:center;
     justify-content:space-between;
+    flex-wrap:wrap;
+    gap:8px;
     padding:9px 12px;
     background:var(--white);
     border:1px solid var(--paper-line);
@@ -148,17 +150,20 @@
   .res-left{ display:flex; align-items:baseline; gap:10px; }
   .res-time{ font-size:13px; color:var(--teal-dark); font-weight:600; min-width:42px; }
   .res-name{ font-size:14px; }
-  .res-actions{ display:flex; align-items:center; gap:2px; }
+  .res-actions{ display:flex; align-items:center; gap:6px; flex-shrink:0; margin-left:auto; }
   .cal-btn{
-    width:26px;
-    height:26px;
-    display:flex;
+    display:inline-flex;
     align-items:center;
     justify-content:center;
-    border-radius:4px;
-    font-size:14px;
+    height:28px;
+    padding:0 10px;
+    border:1px solid var(--teal);
+    border-radius:6px;
+    background:var(--white);
+    color:var(--teal-dark);
+    font:500 12px 'Inter',sans-serif;
     text-decoration:none;
-    line-height:1;
+    white-space:nowrap;
   }
   .cal-btn:hover{ background:var(--teal-wash); }
   .del-btn{
@@ -609,7 +614,7 @@ function paymentMonthKey(){
 function googleCalendarUrl(r){
   const start = r.date.replace(/-/g, '') + 'T' + r.startTime.replace(':', '') + '00';
   const end = r.date.replace(/-/g, '') + 'T' + r.endTime.replace(':', '') + '00';
-  const text = encodeURIComponent('Sala de ensayo — ' + r.name);
+  const text = encodeURIComponent(r.name);
   const details = encodeURIComponent('Reserva de la sala de ensayo.');
   return 'https://calendar.google.com/calendar/render?action=TEMPLATE'
     + '&text=' + text
@@ -777,9 +782,9 @@ function renderPanel(){
       calBtn.href = googleCalendarUrl(r);
       calBtn.target = '_blank';
       calBtn.rel = 'noopener';
-      calBtn.textContent = '📅';
-      calBtn.title = 'Guardar en Google Calendar';
-      calBtn.setAttribute('aria-label', 'Guardar la reserva de ' + r.name + ' en Google Calendar');
+      calBtn.textContent = 'Agregar a Google Calendar';
+      calBtn.title = 'Agregar esta reserva a Google Calendar';
+      calBtn.setAttribute('aria-label', 'Agregar la reserva de ' + r.name + ' a Google Calendar');
       actions.appendChild(calBtn);
 
       const isOwner = r.owner === state.uid;
