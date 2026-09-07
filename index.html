@@ -1097,10 +1097,10 @@ function renderPayments(){
       const selfMark = document.createElement('button');
       selfMark.type = 'button';
       selfMark.className = 'payment-toggle self-mark';
-      selfMark.textContent = 'Marqué que pagué';
+      selfMark.textContent = 'Marcar como pagado';
 
       selfMark.addEventListener('click', async function(){
-        const ok = window.confirm('¿Sos ' + person.nombre + ' y ya enviaste el comprobante por el grupo de WhatsApp?');
+        const ok = window.confirm('¿Sos ' + person.nombre + ' y enviaste el comprobante por el grupo de WhatsApp?');
         if(!ok) return;
 
         selfMark.disabled = true;
