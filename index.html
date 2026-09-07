@@ -323,6 +323,15 @@
     border-color:var(--teal);
     color:var(--teal-dark);
   }
+  .self-mark{
+    border-color:var(--teal);
+    background:var(--teal-wash);
+    color:var(--teal-dark);
+  }
+  .self-mark:hover{
+    background:var(--teal);
+    color:var(--white);
+  }
   .save-payments-btn{
     display:block;
     width:100%;
@@ -356,6 +365,43 @@
     padding:0;
     text-decoration:underline;
     text-underline-offset:2px;
+  }
+  .history-toggle{
+    display:block;
+    margin-top:14px;
+    border:none;
+    background:transparent;
+    color:var(--teal-dark);
+    font:500 12px 'Inter',sans-serif;
+    cursor:pointer;
+    padding:0;
+    text-decoration:underline;
+    text-underline-offset:2px;
+  }
+  .history-box{
+    margin-top:10px;
+    padding:10px 12px;
+    border:1px solid var(--paper-line);
+    border-radius:6px;
+    background:rgba(255,255,255,.5);
+    max-height:220px;
+    overflow-y:auto;
+  }
+  .history-list{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .history-item{
+    font-size:12px;
+    color:var(--ink-soft);
+    line-height:1.5;
+    padding-bottom:6px;
+    border-bottom:1px solid var(--paper-line);
+  }
+  .history-item:last-child{
+    border-bottom:none;
+    padding-bottom:0;
   }
   .admin-login{
     margin-top:12px;
@@ -520,7 +566,7 @@ import {
   signOut,
   onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getDatabase, ref, onValue, set, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getDatabase, ref, onValue, set, remove, push, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyC22WibCcJ6xErPI96cE__IIeDjAmji51Q",
@@ -561,11 +607,16 @@ const state = {
   isAdmin: false,
   paymentYear: null,
   paymentMonth: null,
-  showAdminLogin: false
+  showAdminLogin: false,
+  historial: [],
+  historialReady: false,
+  historialError: false,
+  showHistorial: false
 };
 
 let unsubscribeReservas = null;
 let unsubscribePagos = null;
+let unsubscribeHistorial = null;
 
 const today = new Date();
 today.setHours(0,0,0,0);
@@ -609,6 +660,22 @@ function displayDate(s){
 
 function paymentMonthKey(){
   return state.paymentYear + '-' + String(state.paymentMonth + 1).padStart(2,'0');
+}
+
+function logPaymentHistory(mes, persona, accion, origen){
+  try {
+    const entryRef = push(ref(db, 'historial'));
+    set(entryRef, {
+      mes: mes,
+      personaId: persona.id,
+      personaNombre: persona.nombre,
+      accion: accion,
+      origen: origen,
+      at: serverTimestamp()
+    }).catch(function(err){ console.error('No se pudo guardar en el historial', err); });
+  } catch(err) {
+    console.error('No se pudo guardar en el historial', err);
+  }
 }
 
 function googleCalendarUrl(r){
@@ -1013,8 +1080,10 @@ function renderPayments(){
           const paymentRef = ref(db, 'pagos/' + key + '/' + person.id);
           if(paid){
             await remove(paymentRef);
+            logPaymentHistory(key, person, 'desmarcado', 'admin');
           } else {
             await set(paymentRef, true);
+            logPaymentHistory(key, person, 'marcado', 'admin');
           }
         } catch(err) {
           window.alert('No se pudo cambiar el estado del pago. Revisá las reglas de Firebase.');
@@ -1024,6 +1093,30 @@ function renderPayments(){
       });
 
       row.appendChild(toggle);
+    } else if(!paid){
+      const selfMark = document.createElement('button');
+      selfMark.type = 'button';
+      selfMark.className = 'payment-toggle self-mark';
+      selfMark.textContent = 'Marqué que pagué';
+
+      selfMark.addEventListener('click', async function(){
+        const ok = window.confirm('¿Sos ' + person.nombre + ' y ya enviaste el comprobante por el grupo de WhatsApp?');
+        if(!ok) return;
+
+        selfMark.disabled = true;
+        selfMark.textContent = 'Guardando…';
+        try {
+          await set(ref(db, 'pagos/' + key + '/' + person.id), true);
+          logPaymentHistory(key, person, 'marcado', 'auto');
+        } catch(err) {
+          window.alert('No se pudo registrar el pago. Revisá la conexión e intentá nuevamente.');
+          console.error(err);
+          selfMark.disabled = false;
+          selfMark.textContent = 'Marqué que pagué';
+        }
+      });
+
+      row.appendChild(selfMark);
     }
 
     list.appendChild(row);
@@ -1052,6 +1145,61 @@ function renderPayments(){
     });
 
     paymentsPanelEl.appendChild(saveBtn);
+
+    const historyToggle = document.createElement('button');
+    historyToggle.type = 'button';
+    historyToggle.className = 'history-toggle';
+    historyToggle.textContent = state.showHistorial ? 'Ocultar historial de pagos' : 'Ver historial de pagos';
+    historyToggle.addEventListener('click', function(){
+      state.showHistorial = !state.showHistorial;
+      renderPayments();
+    });
+    paymentsPanelEl.appendChild(historyToggle);
+
+    if(state.showHistorial){
+      const historyBox = document.createElement('div');
+      historyBox.className = 'history-box';
+
+      if(state.historialError){
+        const err = document.createElement('p');
+        err.className = 'error-msg';
+        err.style.display = 'block';
+        err.textContent = 'No se pudo cargar el historial. Revisá las reglas de Firebase (nodo "historial").';
+        historyBox.appendChild(err);
+      } else if(!state.historialReady){
+        const loading = document.createElement('p');
+        loading.className = 'empty-note';
+        loading.textContent = 'Cargando historial…';
+        historyBox.appendChild(loading);
+      } else if(state.historial.length === 0){
+        const empty = document.createElement('p');
+        empty.className = 'empty-note';
+        empty.textContent = 'Todavía no hay cambios registrados.';
+        historyBox.appendChild(empty);
+      } else {
+        const historyList = document.createElement('div');
+        historyList.className = 'history-list';
+
+        state.historial.slice(0, 50).forEach(function(entry){
+          const item = document.createElement('div');
+          item.className = 'history-item';
+
+          const when = entry.at
+            ? new Date(entry.at).toLocaleString('es-AR', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })
+            : '—';
+          const accionTxt = entry.accion === 'marcado' ? 'marcó como pagado' : 'desmarcó el pago';
+          const origenTxt = entry.origen === 'admin' ? 'admin' : 'auto-registro';
+          const nombre = entry.personaNombre || entry.personaId || 'alguien';
+
+          item.textContent = when + ' — ' + nombre + ' ' + accionTxt + ' (' + origenTxt + (entry.mes ? ', ' + entry.mes : '') + ')';
+          historyList.appendChild(item);
+        });
+
+        historyBox.appendChild(historyList);
+      }
+
+      paymentsPanelEl.appendChild(historyBox);
+    }
   }
 
   renderAdminArea();
@@ -1303,6 +1451,32 @@ function startDatabaseListeners(){
     paymentsPanelEl.innerHTML = '<p class="error-msg" style="display:block">No se pudieron cargar los pagos. Revisá las reglas de Firebase.</p>';
     console.error(err);
   });
+
+  if(state.isAdmin){
+    startHistorialListener();
+  }
+}
+
+function startHistorialListener(){
+  if(unsubscribeHistorial) unsubscribeHistorial();
+
+  state.historialReady = false;
+  state.historialError = false;
+
+  unsubscribeHistorial = onValue(ref(db, 'historial'), function(snapshot){
+    const data = snapshot.val() || {};
+    state.historial = Object.entries(data)
+      .map(function([id, entry]){ return { id, ...entry }; })
+      .sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
+    state.historialReady = true;
+    state.historialError = false;
+    if(state.isAdmin) renderPayments();
+  }, function(err){
+    state.historialReady = true;
+    state.historialError = true;
+    console.error(err);
+    if(state.isAdmin) renderPayments();
+  });
 }
 
 renderCalendar();
@@ -1315,6 +1489,18 @@ onAuthStateChanged(auth, function(user){
     state.isAdmin = !user.isAnonymous;
     startDatabaseListeners();
     renderAdminArea();
+  } else {
+    // Momento breve entre "Guardar"/"Salir" (signOut) y que se restablezca
+    // la sesión anónima. Nos desuscribimos en vez de dejar que los
+    // listeners fallen por falta de permisos y muestren un error.
+    if(unsubscribeReservas){ unsubscribeReservas(); unsubscribeReservas = null; }
+    if(unsubscribePagos){ unsubscribePagos(); unsubscribePagos = null; }
+    if(unsubscribeHistorial){ unsubscribeHistorial(); unsubscribeHistorial = null; }
+    state.uid = null;
+    state.isAdmin = false;
+    state.historial = [];
+    state.historialReady = false;
+    state.showHistorial = false;
   }
 });
 
