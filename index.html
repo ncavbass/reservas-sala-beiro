@@ -968,7 +968,7 @@ function renderPanel(){
 
       const time = document.createElement('span');
       time.className = 'res-time';
-      time.textContent = r.startTime + '–' + r.endTime + (crossesMidnight(r) ? ' (+1 día)' : '');
+      time.textContent = r.startTime + '–' + r.endTime;
       time.title = crossesMidnight(r) ? 'Termina de madrugada, al día siguiente' : '';
 
       const name = document.createElement('span');
