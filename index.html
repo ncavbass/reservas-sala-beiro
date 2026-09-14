@@ -742,7 +742,7 @@ function googleCalendarUrl(r){
   const endDateStr = r.endDate || r.date;
   const start = r.date.replace(/-/g, '') + 'T' + r.startTime.replace(':', '') + '00';
   const end = endDateStr.replace(/-/g, '') + 'T' + r.endTime.replace(':', '') + '00';
-  const text = encodeURIComponent(r.name);
+  const text = encodeURIComponent('Reserva de sala Beiró - ' + r.name);
   const details = encodeURIComponent('Reserva de la sala de ensayo.');
   return 'https://calendar.google.com/calendar/render?action=TEMPLATE'
     + '&text=' + text
