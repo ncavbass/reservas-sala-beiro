@@ -944,15 +944,6 @@ function renderPanel(){
     panelEl.appendChild(loading);
     return;
   }
-
-  const spillover = spilloverFor(dateStr);
-  if(spillover){
-    const banner = document.createElement('p');
-    banner.className = 'spillover-note';
-    banner.textContent = 'La sala sigue ocupada hasta las ' + spillover.endTime + ' por la reserva de ' + spillover.name + ' de la noche anterior.';
-    panelEl.appendChild(banner);
-  }
-
   if(list.length === 0 && !isPast){
     const empty = document.createElement('p');
     empty.className = 'empty-note';
