@@ -166,6 +166,21 @@
     white-space:nowrap;
   }
   .cal-btn:hover{ background:var(--teal-wash); }
+  .edit-btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    height:28px;
+    padding:0 10px;
+    border:1px solid var(--paper-line);
+    border-radius:6px;
+    background:var(--white);
+    color:var(--ink-soft);
+    font:500 12px 'Inter',sans-serif;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .edit-btn:hover{ border-color:var(--teal); color:var(--teal-dark); }
   .del-btn{
     width:26px; height:26px; border:none; background:transparent;
     color:var(--ink-faint); cursor:pointer; font-size:16px; line-height:1;
@@ -173,6 +188,21 @@
   }
   .del-btn:hover{ color:var(--red); background:#F4E6E3; }
   .past-note{ font-size:13px; color:var(--ink-faint); margin:14px 0 0; }
+  .spillover-note{
+    font-size:13px;
+    color:var(--teal-dark);
+    background:var(--teal-wash);
+    border:1px solid var(--teal);
+    border-radius:6px;
+    padding:8px 10px;
+    margin:0 0 14px;
+  }
+  .editing-note{
+    font-size:13px;
+    color:var(--teal-dark);
+    margin:0 0 8px;
+    font-weight:500;
+  }
 
   form{ display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:16px; }
   .field{ display:flex; flex-direction:column; gap:4px; }
@@ -231,6 +261,11 @@
     margin:0;
     font-size:13px;
     color:var(--ink-soft);
+  }
+  .payments-instructions{
+    margin:6px 0 0;
+    font-size:13px;
+    color:var(--teal-dark);
   }
   .payments-month-nav{
     display:flex;
@@ -350,6 +385,26 @@
   .save-payments-btn:disabled{
     opacity:.7;
     cursor:default;
+  }
+  .confirm-month-btn{
+    margin-bottom:14px;
+  }
+  .payments-confirmed-badge{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:12px 14px;
+    background:var(--teal-wash);
+    border:1px solid var(--teal);
+    border-radius:8px;
+    font-size:14px;
+    font-weight:600;
+    color:var(--teal-dark);
+    margin-bottom:10px;
+  }
+  .payments-confirmed-actions{
+    display:flex;
+    gap:16px;
   }
   .admin-area{
     margin-top:16px;
@@ -517,6 +572,7 @@
   <section id="paymentsSection">
     <h2 class="payments-title">Pagos</h2>
     <p class="payments-subtitle">Cuota mensual de la sala. Se paga hasta el día 10 de cada mes — enviar el comprobante por el grupo de WhatsApp.</p>
+    <p class="payments-instructions">¿Ya pagaste? Marcá tu nombre en la lista de abajo — hacelo antes de mandar el comprobante por el grupo.</p>
 
     <div class="payments-month-nav">
       <p id="paymentMonthLabel"></p>
@@ -608,15 +664,19 @@ const state = {
   paymentYear: null,
   paymentMonth: null,
   showAdminLogin: false,
+  editingReservaId: null,
   historial: [],
   historialReady: false,
   historialError: false,
-  showHistorial: false
+  showHistorial: false,
+  confirmaciones: {},
+  showPaymentsDetail: false
 };
 
 let unsubscribeReservas = null;
 let unsubscribePagos = null;
 let unsubscribeHistorial = null;
+let unsubscribeConfirmaciones = null;
 
 const today = new Date();
 today.setHours(0,0,0,0);
@@ -679,8 +739,9 @@ function logPaymentHistory(mes, persona, accion, origen){
 }
 
 function googleCalendarUrl(r){
+  const endDateStr = r.endDate || r.date;
   const start = r.date.replace(/-/g, '') + 'T' + r.startTime.replace(':', '') + '00';
-  const end = r.date.replace(/-/g, '') + 'T' + r.endTime.replace(':', '') + '00';
+  const end = endDateStr.replace(/-/g, '') + 'T' + r.endTime.replace(':', '') + '00';
   const text = encodeURIComponent(r.name);
   const details = encodeURIComponent('Reserva de la sala de ensayo.');
   return 'https://calendar.google.com/calendar/render?action=TEMPLATE'
@@ -751,6 +812,74 @@ function reservasDelDia(dateStr){
     .sort(function(a,b){ return (a.startTime || '').localeCompare(b.startTime || ''); });
 }
 
+function addDaysToDateStr(dateStr, n){
+  const d = parseDate(dateStr);
+  d.setDate(d.getDate() + n);
+  return fmtDate(d);
+}
+
+function crossesMidnight(r){
+  return !!(r.endDate && r.endDate !== r.date);
+}
+
+/* Intervalos horarios que ocupan la sala en un día dado, incluyendo lo que
+   "desborda" de una reserva que empezó la noche anterior y sigue de
+   madrugada. endTime puede ser '24:00' quiere decir "hasta la medianoche". */
+function occupiedIntervalsFor(dateStr){
+  const intervals = [];
+
+  reservasDelDia(dateStr).forEach(function(r){
+    intervals.push({
+      startTime: r.startTime,
+      endTime: crossesMidnight(r) ? '24:00' : r.endTime,
+      id: r.id
+    });
+  });
+
+  const prevDate = addDaysToDateStr(dateStr, -1);
+  reservasDelDia(prevDate).forEach(function(r){
+    if(crossesMidnight(r) && r.endDate === dateStr){
+      intervals.push({
+        startTime: '00:00',
+        endTime: r.endTime,
+        id: r.id
+      });
+    }
+  });
+
+  return intervals;
+}
+
+/* Devuelve la reserva (si existe) que sigue ocupando la sala de madrugada
+   en `dateStr`, iniciada la noche anterior. */
+function spilloverFor(dateStr){
+  const prevDate = addDaysToDateStr(dateStr, -1);
+  return reservasDelDia(prevDate).find(function(r){
+    return crossesMidnight(r) && r.endDate === dateStr;
+  }) || null;
+}
+
+function hasScheduleConflict(dateStr, startTime, endTime, crosses, excludeId){
+  const todayPortionEnd = crosses ? '24:00' : endTime;
+
+  const todayConflict = occupiedIntervalsFor(dateStr).some(function(iv){
+    if(excludeId && iv.id === excludeId) return false;
+    return startTime < iv.endTime && todayPortionEnd > iv.startTime;
+  });
+  if(todayConflict) return true;
+
+  if(crosses){
+    const nextDate = addDaysToDateStr(dateStr, 1);
+    const nextDayConflict = occupiedIntervalsFor(nextDate).some(function(iv){
+      if(excludeId && iv.id === excludeId) return false;
+      return '00:00' < iv.endTime && endTime > iv.startTime;
+    });
+    if(nextDayConflict) return true;
+  }
+
+  return false;
+}
+
 /* ---------------- CALENDARIO / RESERVAS ---------------- */
 
 function renderCalendar(){
@@ -816,6 +945,14 @@ function renderPanel(){
     return;
   }
 
+  const spillover = spilloverFor(dateStr);
+  if(spillover){
+    const banner = document.createElement('p');
+    banner.className = 'spillover-note';
+    banner.textContent = 'La sala sigue ocupada hasta las ' + spillover.endTime + ' por la reserva de ' + spillover.name + ' de la noche anterior.';
+    panelEl.appendChild(banner);
+  }
+
   if(list.length === 0 && !isPast){
     const empty = document.createElement('p');
     empty.className = 'empty-note';
@@ -831,7 +968,8 @@ function renderPanel(){
 
       const time = document.createElement('span');
       time.className = 'res-time';
-      time.textContent = r.startTime + '–' + r.endTime;
+      time.textContent = r.startTime + '–' + r.endTime + (crossesMidnight(r) ? ' (+1 día)' : '');
+      time.title = crossesMidnight(r) ? 'Termina de madrugada, al día siguiente' : '';
 
       const name = document.createElement('span');
       name.className = 'res-name';
@@ -855,6 +993,22 @@ function renderPanel(){
       actions.appendChild(calBtn);
 
       const isOwner = r.owner === state.uid;
+      if((isOwner || state.isAdmin) && !isPast){
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'edit-btn';
+        editBtn.textContent = 'Editar';
+        editBtn.title = isOwner ? 'Editar mi reserva' : 'Editar reserva (admin)';
+        editBtn.setAttribute('aria-label', isOwner ? 'Editar tu reserva' : 'Editar la reserva de ' + r.name);
+
+        editBtn.addEventListener('click', function(){
+          state.editingReservaId = r.id;
+          renderPanel();
+        });
+
+        actions.appendChild(editBtn);
+      }
+
       if(isOwner || state.isAdmin){
         const del = document.createElement('button');
         del.className = 'del-btn';
@@ -871,6 +1025,10 @@ function renderPanel(){
 
           try {
             await remove(ref(db, 'reservas/' + r.id));
+            if(state.editingReservaId === r.id){
+              state.editingReservaId = null;
+              renderPanel();
+            }
           } catch(err) {
             window.alert('No se pudo cancelar la reserva. Recargá la página e intentá nuevamente.');
             console.error(err);
@@ -894,6 +1052,22 @@ function renderPanel(){
     return;
   }
 
+  const editing = state.editingReservaId
+    ? list.find(function(r){ return r.id === state.editingReservaId; })
+    : null;
+
+  if(state.editingReservaId && !editing){
+    // La reserva que se estaba editando ya no existe (la borraron desde otro lado).
+    state.editingReservaId = null;
+  }
+
+  if(editing){
+    const editingNote = document.createElement('p');
+    editingNote.className = 'editing-note';
+    editingNote.textContent = 'Editando la reserva de ' + editing.name + '.';
+    panelEl.appendChild(editingNote);
+  }
+
   const form = document.createElement('form');
 
   const nameField = document.createElement('div');
@@ -905,7 +1079,7 @@ function renderPanel(){
   nameInput.id = 'nameInput';
   nameInput.placeholder = '';
   nameInput.maxLength = 40;
-  nameInput.value = localStorage.getItem('nombreReserva') || '';
+  nameInput.value = editing ? editing.name : (localStorage.getItem('nombreReserva') || '');
   nameField.appendChild(nameInput);
 
   const startField = document.createElement('div');
@@ -915,6 +1089,7 @@ function renderPanel(){
   const startInput = document.createElement('input');
   startInput.type = 'time';
   startInput.id = 'startInput';
+  if(editing) startInput.value = editing.startTime;
   startField.appendChild(startInput);
 
   const endField = document.createElement('div');
@@ -924,27 +1099,26 @@ function renderPanel(){
   const endInput = document.createElement('input');
   endInput.type = 'time';
   endInput.id = 'endInput';
+  if(editing) endInput.value = editing.endTime;
   endField.appendChild(endInput);
 
   startInput.addEventListener('change', function(){
     if(!startInput.value) return;
 
     const [hours, minutes] = startInput.value.split(':').map(Number);
-    const totalMinutes = hours * 60 + minutes + 120;
+    const totalMinutes = (hours * 60 + minutes + 180) % (24 * 60);
 
-    if(totalMinutes < 24 * 60){
-      const endHours = Math.floor(totalMinutes / 60);
-      const endMinutes = totalMinutes % 60;
+    const endHours = Math.floor(totalMinutes / 60);
+    const endMinutes = totalMinutes % 60;
 
-      endInput.value =
-        String(endHours).padStart(2,'0') + ':' +
-        String(endMinutes).padStart(2,'0');
-    }
+    endInput.value =
+      String(endHours).padStart(2,'0') + ':' +
+      String(endMinutes).padStart(2,'0');
   });
 
   const submitBtn = document.createElement('button');
   submitBtn.type = 'submit';
-  submitBtn.textContent = 'Reservar';
+  submitBtn.textContent = editing ? 'Guardar cambios' : 'Reservar';
 
   const errorEl = document.createElement('p');
   errorEl.className = 'error-msg';
@@ -953,6 +1127,20 @@ function renderPanel(){
   form.appendChild(startField);
   form.appendChild(endField);
   form.appendChild(submitBtn);
+
+  if(editing){
+    const cancelEditBtn = document.createElement('button');
+    cancelEditBtn.type = 'button';
+    cancelEditBtn.className = 'admin-link';
+    cancelEditBtn.style.marginLeft = '4px';
+    cancelEditBtn.textContent = 'Cancelar edición';
+    cancelEditBtn.addEventListener('click', function(){
+      state.editingReservaId = null;
+      renderPanel();
+    });
+    form.appendChild(cancelEditBtn);
+  }
+
   form.appendChild(errorEl);
 
   form.addEventListener('submit', async function(e){
@@ -968,17 +1156,16 @@ function renderPanel(){
       return;
     }
 
-    if(endTime <= startTime){
-      errorEl.textContent = 'La hora de fin tiene que ser posterior a la hora de inicio.';
+    if(endTime === startTime){
+      errorEl.textContent = 'La hora de fin no puede ser igual a la de inicio.';
       errorEl.style.display = 'block';
       return;
     }
 
-    const clash = reservasDelDia(dateStr).some(function(r){
-      return startTime < r.endTime && endTime > r.startTime;
-    });
+    const crosses = endTime <= startTime; // ej: empieza 23:00, termina 02:00 → cruza a la madrugada del día siguiente
+    const excludeId = editing ? editing.id : null;
 
-    if(clash){
+    if(hasScheduleConflict(dateStr, startTime, endTime, crosses, excludeId)){
       errorEl.textContent = 'Esa franja se superpone con otra reserva. Elegí otro horario.';
       errorEl.style.display = 'block';
       return;
@@ -986,27 +1173,29 @@ function renderPanel(){
 
     errorEl.style.display = 'none';
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Reservando…';
+    submitBtn.textContent = editing ? 'Guardando…' : 'Reservando…';
 
-    const id = dateStr + '-' + startTime.replace(':','') + '-' + Date.now();
-    const reserva = { date: dateStr, startTime, endTime, name, owner: state.uid };
+    const id = editing ? editing.id : (dateStr + '-' + startTime.replace(':','') + '-' + Date.now());
+    const endDate = crosses ? addDaysToDateStr(dateStr, 1) : dateStr;
+    const owner = editing ? editing.owner : state.uid;
+    const reserva = { date: dateStr, startTime, endTime, endDate, name, owner };
 
     try {
       await set(ref(db, 'reservas/' + id), reserva);
 
       localStorage.setItem('nombreReserva', name);
-      submitBtn.textContent = 'Reserva guardada ✓';
+      state.editingReservaId = null;
+      submitBtn.textContent = editing ? 'Cambios guardados ✓' : 'Reserva guardada ✓';
 
       setTimeout(function(){
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Reservar';
-      }, 2000);
+        renderPanel();
+      }, 900);
 
     } catch(err) {
       errorEl.textContent = 'No se pudo guardar la reserva. Revisá la conexión e intentá nuevamente.';
       errorEl.style.display = 'block';
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Reservar';
+      submitBtn.textContent = editing ? 'Guardar cambios' : 'Reservar';
       console.error(err);
     }
   });
@@ -1032,6 +1221,63 @@ function renderPayments(){
   const key = paymentMonthKey();
   const monthPayments = state.pagos[key] || {};
   const paidCount = PERSONAS.filter(function(p){ return monthPayments[p.id] === true; }).length;
+  const isConfirmed = !!state.confirmaciones[key];
+
+  if(isConfirmed && !state.showPaymentsDetail){
+    const badge = document.createElement('div');
+    badge.className = 'payments-confirmed-badge';
+    badge.textContent = '✓ ' + MESES[state.paymentMonth] + ' — la sala está al día';
+    paymentsPanelEl.appendChild(badge);
+
+    const actionsRow = document.createElement('div');
+    actionsRow.className = 'payments-confirmed-actions';
+
+    const detailToggle = document.createElement('button');
+    detailToggle.type = 'button';
+    detailToggle.className = 'admin-link';
+    detailToggle.textContent = 'Ver detalle';
+    detailToggle.addEventListener('click', function(){
+      state.showPaymentsDetail = true;
+      renderPayments();
+    });
+    actionsRow.appendChild(detailToggle);
+
+    if(state.isAdmin){
+      const reopenBtn = document.createElement('button');
+      reopenBtn.type = 'button';
+      reopenBtn.className = 'admin-link';
+      reopenBtn.textContent = 'Reabrir mes';
+      reopenBtn.addEventListener('click', async function(){
+        reopenBtn.disabled = true;
+        try {
+          await set(ref(db, 'confirmaciones/' + key), false);
+          logPaymentHistory(key, { id: 'grupo', nombre: 'Todo el grupo' }, 'reabierto', 'admin');
+        } catch(err) {
+          window.alert('No se pudo reabrir el mes. Revisá las reglas de Firebase.');
+          console.error(err);
+          reopenBtn.disabled = false;
+        }
+      });
+      actionsRow.appendChild(reopenBtn);
+    }
+
+    paymentsPanelEl.appendChild(actionsRow);
+    renderAdminArea();
+    return;
+  }
+
+  if(isConfirmed && state.showPaymentsDetail){
+    const collapseBtn = document.createElement('button');
+    collapseBtn.type = 'button';
+    collapseBtn.className = 'admin-link';
+    collapseBtn.style.marginBottom = '12px';
+    collapseBtn.textContent = 'Contraer';
+    collapseBtn.addEventListener('click', function(){
+      state.showPaymentsDetail = false;
+      renderPayments();
+    });
+    paymentsPanelEl.appendChild(collapseBtn);
+  }
 
   const summary = document.createElement('div');
   summary.className = 'payments-summary';
@@ -1044,6 +1290,29 @@ function renderPayments(){
   progressInner.style.width = ((paidCount / PERSONAS.length) * 100) + '%';
   progress.appendChild(progressInner);
   paymentsPanelEl.appendChild(progress);
+
+  if(state.isAdmin && !isConfirmed && paidCount === PERSONAS.length){
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'save-payments-btn confirm-month-btn';
+    confirmBtn.textContent = 'Marcar el mes como al día';
+
+    confirmBtn.addEventListener('click', async function(){
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Guardando…';
+      try {
+        await set(ref(db, 'confirmaciones/' + key), true);
+        logPaymentHistory(key, { id: 'grupo', nombre: 'Todo el grupo' }, 'confirmado', 'admin');
+      } catch(err) {
+        window.alert('No se pudo confirmar el mes. Revisá las reglas de Firebase.');
+        console.error(err);
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Marcar el mes como al día';
+      }
+    });
+
+    paymentsPanelEl.appendChild(confirmBtn);
+  }
 
   const list = document.createElement('div');
   list.className = 'payment-list';
@@ -1097,10 +1366,10 @@ function renderPayments(){
       const selfMark = document.createElement('button');
       selfMark.type = 'button';
       selfMark.className = 'payment-toggle self-mark';
-      selfMark.textContent = 'Marcar como pagado';
+      selfMark.textContent = 'Marqué que pagué';
 
       selfMark.addEventListener('click', async function(){
-        const ok = window.confirm('¿Sos ' + person.nombre + ' y enviaste el comprobante por el grupo de WhatsApp?');
+        const ok = window.confirm('¿Sos ' + person.nombre + ' y ya enviaste el comprobante por el grupo de WhatsApp?');
         if(!ok) return;
 
         selfMark.disabled = true;
@@ -1187,7 +1456,12 @@ function renderPayments(){
           const when = entry.at
             ? new Date(entry.at).toLocaleString('es-AR', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })
             : '—';
-          const accionTxt = entry.accion === 'marcado' ? 'marcó como pagado' : 'desmarcó el pago';
+          let accionTxt;
+          if(entry.accion === 'marcado') accionTxt = 'marcó como pagado';
+          else if(entry.accion === 'desmarcado') accionTxt = 'desmarcó el pago';
+          else if(entry.accion === 'confirmado') accionTxt = 'confirmó que el mes está al día';
+          else if(entry.accion === 'reabierto') accionTxt = 'reabrió el mes (ya no está al día)';
+          else accionTxt = entry.accion;
           const origenTxt = entry.origen === 'admin' ? 'admin' : 'auto-registro';
           const nombre = entry.personaNombre || entry.personaId || 'alguien';
 
@@ -1257,7 +1531,7 @@ function renderAdminArea(){
 
   const emailField = document.createElement('div');
   emailField.className = 'field';
-  emailField.innerHTML = '<label for="adminEmail">Email admin</label>';
+  emailField.innerHTML = '<label for="adminEmail">Email</label>';
   const emailInput = document.createElement('input');
   emailInput.type = 'email';
   emailInput.id = 'adminEmail';
@@ -1422,6 +1696,7 @@ document.getElementById('nextMonth').addEventListener('click', function(){
 function startDatabaseListeners(){
   if(unsubscribeReservas) unsubscribeReservas();
   if(unsubscribePagos) unsubscribePagos();
+  if(unsubscribeConfirmaciones) unsubscribeConfirmaciones();
 
   state.ready = false;
   state.paymentsReady = false;
@@ -1449,6 +1724,13 @@ function startDatabaseListeners(){
   }, function(err){
     state.paymentsReady = true;
     paymentsPanelEl.innerHTML = '<p class="error-msg" style="display:block">No se pudieron cargar los pagos. Revisá las reglas de Firebase.</p>';
+    console.error(err);
+  });
+
+  unsubscribeConfirmaciones = onValue(ref(db, 'confirmaciones'), function(snapshot){
+    state.confirmaciones = snapshot.val() || {};
+    renderPayments();
+  }, function(err){
     console.error(err);
   });
 
@@ -1496,6 +1778,7 @@ onAuthStateChanged(auth, function(user){
     if(unsubscribeReservas){ unsubscribeReservas(); unsubscribeReservas = null; }
     if(unsubscribePagos){ unsubscribePagos(); unsubscribePagos = null; }
     if(unsubscribeHistorial){ unsubscribeHistorial(); unsubscribeHistorial = null; }
+    if(unsubscribeConfirmaciones){ unsubscribeConfirmaciones(); unsubscribeConfirmaciones = null; }
     state.uid = null;
     state.isAdmin = false;
     state.historial = [];
